@@ -35,7 +35,7 @@
 
 #define ISspace(x) isspace((int)(x))
 
-#define SERVER_STRING "Server: jdbhttpd/0.1.0\r\n"
+#define SERVER_STRING "Server: tinyhttpd/0.1.0\r\n"
 
 void accept_request(int);
 void bad_request(int);
@@ -59,16 +59,19 @@ void accept_request(int client)
 {
  char buf[1024];
  int numchars;
+
+ 
  char method[255];
  char url[255];
  char path[512];
- size_t i, j;
- struct stat st;
- int cgi = 0;      /* becomes true if server decides this is a CGI
-                    * program */
  char *query_string = NULL;
 
- //读http 请求的第一行数据（request line），把请求方法存进 method 中
+ size_t i, j;
+ struct stat st;    /* 文件描述符状态 */
+ int cgi = 0;      /* becomes true if server decides this is a CGI
+                    * program */
+
+ //读http 请求的第一行数据（request line，把请求方法存进 method 中
  numchars = get_line(client, buf, sizeof(buf));
  i = 0; j = 0;
  while (!ISspace(buf[j]) && (i < sizeof(method) - 1))
@@ -125,13 +128,14 @@ void accept_request(int client)
  }
 
  //将前面分隔两份的前面那份字符串，拼接在字符串htdocs的后面之后就输出存储到数组 path 中。相当于现在 path 中存储着一个字符串
+ //将 url追加到htdocs后面并加入赋值给path
  sprintf(path, "htdocs%s", url);
  
  //如果 path 数组中的这个字符串的最后一个字符是以字符 / 结尾的话，就拼接上一个"index.html"的字符串。首页的意思
  if (path[strlen(path) - 1] == '/')
   strcat(path, "index.html");
  
- //在系统上去查询该文件是否存在
+ //在系统上去查询该文件是否存在,将path文件或目录的状态存储到st中
  if (stat(path, &st) == -1) {
   //如果不存在，那把这次 http 的请求后续的内容(head 和 body)全部读完并忽略
   while ((numchars > 0) && strcmp("\n", buf))  /* read & discard headers */
@@ -191,7 +195,7 @@ void bad_request(int client)
  * easier just to do something like pipe, fork, and exec("cat").
  * Parameters: the client socket descriptor
  *             FILE pointer for the file to cat */
-/**********************************************************************/
+/*******************读取文件内容并发送给客户端***************************************************/
 void cat(int client, FILE *resource)
 {
  char buf[1024];
@@ -373,16 +377,17 @@ void execute_cgi(int client, const char *path,
  *             the buffer to save the data in
  *             the size of the buffer
  * Returns: the number of bytes stored (excluding null) */
-/**********************************************************************/
+/*********** \r ,\n \r\n 都视为换行***********************************************************/
 int get_line(int sock, char *buf, int size)
 {
  int i = 0;
- char c = '\0';
+ char c = '\0'; /*每次读一个字节的缓存*/
  int n;
 
  while ((i < size - 1) && (c != '\n'))
  {
   //recv()包含于<sys/socket.h>,参读《TLPI》P1259, 
+  //从receive buffer中读取数据
   //读一个字节的数据存放在 c 中
   n = recv(sock, &c, 1, 0);
   /* DEBUG printf("%02X\n", c); */
@@ -390,7 +395,7 @@ int get_line(int sock, char *buf, int size)
   {
    if (c == '\r')
    {
-    //
+    //只读不删
     n = recv(sock, &c, 1, MSG_PEEK);
     /* DEBUG printf("%02X\n", c); */
     if ((n > 0) && (c == '\n'))
